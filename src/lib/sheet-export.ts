@@ -22,7 +22,7 @@ export async function exportToSheet(userId: string) {
       const { data, error } = await adminClient()
         .from('tasks')
         .select(
-          'source_id,source_completed,source_status,override_completed,override_status',
+          'id,source_id,source_completed,source_status,override_completed,override_status',
         )
         .eq('user_id', userId)
         .eq('source', 'sheet')

@@ -30,7 +30,7 @@ export default function LoginScreen({ configured, error, callbackUrl }: Props) {
         options: {
           redirectTo: callbackUrl,
           scopes:
-            'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.events.readonly',
+            'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.readonly',
           queryParams: {
             access_type: 'offline',
             prompt: 'consent',

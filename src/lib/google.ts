@@ -19,6 +19,10 @@ type Connection = {
 };
 export const GOOGLE_SHEETS_WRITE_SCOPE =
   'https://www.googleapis.com/auth/spreadsheets';
+export const GOOGLE_CALENDAR_READ_SCOPE =
+  'https://www.googleapis.com/auth/calendar.readonly';
+export const GOOGLE_CALENDAR_EVENTS_READ_SCOPE =
+  'https://www.googleapis.com/auth/calendar.events.readonly';
 
 export function normalizeScopes(
   scopes: string | null | undefined,
@@ -49,6 +53,15 @@ export function hasGoogleScope(
     if (
       targetClean === GOOGLE_SHEETS_WRITE_SCOPE.replace(/\/$/, '') &&
       cleanItem === 'https://www.googleapis.com/auth/drive'
+    ) {
+      return true;
+    }
+    if (
+      (targetClean === GOOGLE_CALENDAR_READ_SCOPE.replace(/\/$/, '') ||
+        targetClean === GOOGLE_CALENDAR_EVENTS_READ_SCOPE.replace(/\/$/, '')) &&
+      (cleanItem === 'https://www.googleapis.com/auth/calendar' ||
+        cleanItem === GOOGLE_CALENDAR_READ_SCOPE.replace(/\/$/, '') ||
+        cleanItem === GOOGLE_CALENDAR_EVENTS_READ_SCOPE.replace(/\/$/, ''))
     ) {
       return true;
     }

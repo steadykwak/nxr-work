@@ -32,6 +32,7 @@ vi.mock('./supabase', () => ({
                     range: async () => ({
                       data: [
                         {
+                          id: 'task-uuid-1',
                           source_id: 'task-1',
                           source_completed: false,
                           source_status: '대기',
@@ -84,7 +85,7 @@ describe('공통 시트 내보내기 로직', () => {
     expect(mock.claim).toHaveBeenCalledWith('user-1', false);
     expect(mock.token).toHaveBeenCalledWith('user-1', 'write-scope');
     expect(mock.write).toHaveBeenCalledWith('token', [
-      expect.objectContaining({ source_id: 'task-1' }),
+      expect.objectContaining({ id: 'task-uuid-1', source_id: 'task-1' }),
     ]);
     expect(mock.release).toHaveBeenCalledWith('user-1', 'lock-1');
   });

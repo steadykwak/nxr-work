@@ -86,4 +86,31 @@ describe('Google Sheets 쓰기 권한', () => {
     expect(hasGoogleScope(null, GOOGLE_SHEETS_WRITE_SCOPE)).toBe(false);
     expect(hasGoogleScope('', GOOGLE_SHEETS_WRITE_SCOPE)).toBe(false);
   });
+
+  it('calendar.readonly 및 calendar.events.readonly 권한을 상호 호환하여 판별한다', () => {
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/calendar.readonly',
+        'https://www.googleapis.com/auth/calendar.events.readonly',
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/calendar.events.readonly',
+        'https://www.googleapis.com/auth/calendar.readonly',
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/calendar',
+        'https://www.googleapis.com/auth/calendar.readonly',
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/calendar.readonly',
+      ),
+    ).toBe(false);
+  });
 });

@@ -44,12 +44,24 @@ export async function importFromSheet(userId: string): Promise<ImportResult> {
       if (error) throw error;
     }
     const at = new Date().toISOString();
-    const { data, error } = await adminClient()
+    let { data, error } = await adminClient()
       .from('google_connections')
       .update({ last_sheet_sync_at: at, initial_imported_at: at })
       .eq('user_id', userId)
       .eq('sync_lock_id', lockId)
       .select('user_id');
+
+    if (error && error.code === '42703') {
+      const fallback = await adminClient()
+        .from('google_connections')
+        .update({ last_sheet_sync_at: at })
+        .eq('user_id', userId)
+        .eq('sync_lock_id', lockId)
+        .select('user_id');
+      data = fallback.data;
+      error = fallback.error;
+    }
+
     if (error) throw error;
     if (!data?.length) throw new SyncBusyError();
     return { alreadyImported: false, imported: tasks.length, warnings, at };

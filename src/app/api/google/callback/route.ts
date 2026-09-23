@@ -46,18 +46,27 @@ export async function GET(request: NextRequest) {
       expires_in: number;
       scope?: string;
     };
-    const existing = await adminClient()
-      .from('google_connections')
-      .select('refresh_token_encrypted, granted_scopes')
-      .eq('user_id', user.id)
-      .maybeSingle();
-    if (existing.error) {
-      console.error('[Google OAuth DB Lookup Error]:', existing.error);
-      throw existing.error;
+    let existingRefreshToken: string | null = null;
+    let existingGrantedScopes: string | null = null;
+    try {
+      const existing = await adminClient()
+        .from('google_connections')
+        .select('*')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      if (existing.data) {
+        existingRefreshToken = existing.data.refresh_token_encrypted ?? null;
+        existingGrantedScopes = existing.data.granted_scopes ?? null;
+      }
+    } catch (lookupErr) {
+      console.warn('[Google OAuth DB Lookup Warning]:', lookupErr);
     }
+
     const queryScope = request.nextUrl.searchParams.get('scope');
-    const rawScope = normalizeScopes(token.scope || queryScope);
-    const prevScopes = normalizeScopes(existing.data?.granted_scopes);
+    const rawScope = normalizeScopes(
+      [token.scope, queryScope].filter(Boolean).join(' '),
+    );
+    const prevScopes = normalizeScopes(existingGrantedScopes);
     const mergedScopes =
       Array.from(
         new Set(
@@ -67,26 +76,38 @@ export async function GET(request: NextRequest) {
           ].filter(Boolean),
         ),
       ).join(' ') || null;
-    const values = {
+    console.log('[Google OAuth Callback] Granted scopes saved:', mergedScopes);
+
+    const baseValues: Record<string, unknown> = {
+      user_id: user.id,
       access_token_encrypted: encrypt(token.access_token),
       refresh_token_encrypted: token.refresh_token
         ? encrypt(token.refresh_token)
-        : (existing.data?.refresh_token_encrypted ?? null),
+        : existingRefreshToken,
       expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(),
       google_email: null,
-      granted_scopes: mergedScopes,
     };
-    const { error } = existing.data
-      ? await adminClient()
-          .from('google_connections')
-          .update(values)
-          .eq('user_id', user.id)
-      : await adminClient()
-          .from('google_connections')
-          .insert({ user_id: user.id, ...values });
-    if (error) {
-      console.error('[Google OAuth DB Save Error]:', error);
-      throw error;
+
+    let { error: saveError } = await adminClient()
+      .from('google_connections')
+      .upsert(
+        { ...baseValues, granted_scopes: mergedScopes },
+        { onConflict: 'user_id' },
+      );
+
+    if (saveError && saveError.code === '42703') {
+      console.warn(
+        '[Google OAuth DB Save] Column granted_scopes missing in DB, falling back to base columns',
+      );
+      const fallback = await adminClient()
+        .from('google_connections')
+        .upsert(baseValues, { onConflict: 'user_id' });
+      saveError = fallback.error;
+    }
+
+    if (saveError) {
+      console.error('[Google OAuth DB Save Error]:', saveError);
+      throw saveError;
     }
     revalidatePath('/', 'layout');
     revalidatePath('/');
