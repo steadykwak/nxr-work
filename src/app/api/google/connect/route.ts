@@ -13,7 +13,8 @@ export async function GET(request: Request) {
     redirect_uri: `${required('NEXT_PUBLIC_SITE_URL')}/api/google/callback`,
     response_type: 'code',
     scope:
-      'https://www.googleapis.com/auth/spreadsheets.readonly https://www.googleapis.com/auth/calendar.events.readonly',
+      'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.events.readonly',
+    include_granted_scopes: 'true',
     access_type: 'offline',
     prompt: 'consent select_account',
     state,

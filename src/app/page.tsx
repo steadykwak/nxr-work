@@ -4,6 +4,8 @@ import {
   connectionFor,
   accessToken,
   calendarEvents,
+  hasGoogleScope,
+  GOOGLE_SHEETS_WRITE_SCOPE,
   type CalendarEvent,
 } from '@/lib/google';
 import { todaySeoul } from '@/lib/dates';
@@ -44,7 +46,17 @@ export default async function Home() {
       googleReady={googleConfigured()}
       email={user.email}
       connected={Boolean(connection)}
-      lastSync={connection?.last_sheet_sync_at ?? undefined}
+      initialImportedAt={connection?.initial_imported_at ?? undefined}
+      lastExportAt={connection?.last_sheet_export_at ?? undefined}
+      lastExportError={connection?.last_sheet_export_error ?? undefined}
+      writeAccess={hasGoogleScope(
+        connection?.granted_scopes ?? null,
+        GOOGLE_SHEETS_WRITE_SCOPE,
+      )}
+      syncInProgress={Boolean(
+        connection?.sync_lock_at &&
+        Date.now() - new Date(connection.sync_lock_at).getTime() < 15 * 60_000,
+      )}
       lastCalendarSync={connection?.last_calendar_sync_at ?? undefined}
       tasks={(tasks ?? []) as Task[]}
       events={events}

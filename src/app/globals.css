@@ -635,3 +635,33 @@ section {
   flex-wrap: wrap;
   margin-bottom: 16px;
 }
+.week-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 16px;
+  color: #778499;
+  font-size: 12px;
+}
+.week-pagination button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid #e3e9f1;
+  border-radius: 7px;
+  background: #fff;
+  color: #506bdc;
+  padding: 8px 10px;
+  font-size: 12px;
+}
+.week-pagination button:disabled {
+  color: #a1adbb;
+  cursor: not-allowed;
+}
+.sync-status {
+  margin: -7px 0 18px;
+  color: #778499;
+  font-size: 12px;
+}

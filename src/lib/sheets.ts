@@ -126,3 +126,74 @@ export async function fetchSheet(accessToken: string) {
     Number(required('GOOGLE_SHEET_DATE_YEAR')),
   );
 }
+
+export type ExportTask = {
+  source_id: string | null;
+  source_completed: boolean;
+  source_status: string | null;
+  override_completed: boolean | null;
+  override_status: string | null;
+};
+
+export function buildSheetUpdates(
+  tasks: ExportTask[],
+  idRows: unknown[][],
+  name: string,
+) {
+  const rows = new Map<string, number[]>();
+  idRows.forEach((row, index) => {
+    const id = cell(row, 0);
+    if (id) rows.set(id, [...(rows.get(id) ?? []), index + 2]);
+  });
+  return tasks.flatMap((task) => {
+    if (!task.source_id || rows.get(task.source_id)?.length !== 1)
+      throw new Error(
+        `시트에서 고유 업무 ID를 확인할 수 없습니다: ${task.source_id ?? '(없음)'}`,
+      );
+    const row = rows.get(task.source_id)![0];
+    const tab = `'${name.replaceAll("'", "''")}'`;
+    return [
+      {
+        range: `${tab}!L${row}`,
+        values: [[task.override_completed ?? task.source_completed]],
+      },
+      {
+        range: `${tab}!M${row}`,
+        values: [[task.override_status ?? task.source_status ?? '']],
+      },
+    ];
+  });
+}
+
+export async function writeSheetTasks(
+  accessToken: string,
+  tasks: ExportTask[],
+) {
+  if (!tasks.length) return 0;
+  const id = required('GOOGLE_SPREADSHEET_ID');
+  const name = required('GOOGLE_SHEET_NAME');
+  const tab = `'${name.replaceAll("'", "''")}'`;
+  const headers = { Authorization: `Bearer ${accessToken}` };
+  const idResponse = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values/${encodeURIComponent(`${tab}!A2:A`)}?valueRenderOption=FORMATTED_VALUE`,
+    { headers, cache: 'no-store' },
+  );
+  if (!idResponse.ok)
+    throw new Error(`Google Sheets 업무 ID 확인 실패 (${idResponse.status})`);
+  const ids = (await idResponse.json()) as { values?: unknown[][] };
+  const data = buildSheetUpdates(tasks, ids.values ?? [], name);
+  const response = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values:batchUpdate`,
+    {
+      method: 'POST',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valueInputOption: 'RAW', data }),
+      cache: 'no-store',
+    },
+  );
+  if (!response.ok)
+    throw new Error(
+      `Google Sheets 쓰기 실패 (${response.status}). 권한과 시트를 확인해 주세요.`,
+    );
+  return tasks.length;
+}

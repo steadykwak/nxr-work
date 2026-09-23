@@ -31,28 +31,31 @@ export async function GET(request: NextRequest) {
       access_token: string;
       refresh_token?: string;
       expires_in: number;
+      scope?: string;
     };
     const existing = await adminClient()
       .from('google_connections')
       .select('refresh_token_encrypted')
       .eq('user_id', user.id)
       .maybeSingle();
-    const { error } = await adminClient()
-      .from('google_connections')
-      .upsert(
-        {
-          user_id: user.id,
-          access_token_encrypted: encrypt(token.access_token),
-          refresh_token_encrypted: token.refresh_token
-            ? encrypt(token.refresh_token)
-            : (existing.data?.refresh_token_encrypted ?? null),
-          expires_at: new Date(
-            Date.now() + token.expires_in * 1000,
-          ).toISOString(),
-          google_email: null,
-        },
-        { onConflict: 'user_id' },
-      );
+    if (existing.error) throw existing.error;
+    const values = {
+      access_token_encrypted: encrypt(token.access_token),
+      refresh_token_encrypted: token.refresh_token
+        ? encrypt(token.refresh_token)
+        : (existing.data?.refresh_token_encrypted ?? null),
+      expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(),
+      google_email: null,
+      granted_scopes: token.scope ?? null,
+    };
+    const { error } = existing.data
+      ? await adminClient()
+          .from('google_connections')
+          .update(values)
+          .eq('user_id', user.id)
+      : await adminClient()
+          .from('google_connections')
+          .insert({ user_id: user.id, ...values });
     if (error) throw error;
     const result = NextResponse.redirect(new URL('/?connected=1', request.url));
     result.cookies.delete('google_oauth_state');

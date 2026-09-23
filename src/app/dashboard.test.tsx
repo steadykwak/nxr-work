@@ -89,3 +89,43 @@ describe('오늘의 업무 화면', () => {
     expect(html).toContain('aria-label="3일 이내 기한"');
   });
 });
+
+describe('시트 동기화 화면', () => {
+  const base = {
+    configured: true,
+    googleReady: true,
+    email: 'user@example.com',
+    connected: true,
+    today: '2026-09-23',
+    tasks: [] as Task[],
+    events: [],
+  };
+
+  it('초기 가져오기 전에는 초기 동기화만 표시한다', () => {
+    const html = renderToStaticMarkup(<Dashboard {...base} />);
+    expect(html).toContain('초기 동기화');
+    expect(html).not.toContain('지금 동기화');
+  });
+
+  it('초기 가져오기 뒤에는 쓰기 권한과 마지막 성공 상태를 표시한다', () => {
+    const html = renderToStaticMarkup(
+      <Dashboard
+        {...base}
+        initialImportedAt="2026-09-22T00:00:00Z"
+        lastExportAt="2026-09-23T00:00:00Z"
+        writeAccess
+      />,
+    );
+    expect(html).toContain('지금 동기화');
+    expect(html).toContain('마지막 성공');
+    expect(html).not.toContain('초기 동기화</button>');
+  });
+
+  it('쓰기 권한이 없으면 재인증 진입점을 표시한다', () => {
+    const html = renderToStaticMarkup(
+      <Dashboard {...base} initialImportedAt="2026-09-22T00:00:00Z" />,
+    );
+    expect(html).toContain('Google 쓰기 권한 연결');
+    expect(html).not.toContain('지금 동기화');
+  });
+});

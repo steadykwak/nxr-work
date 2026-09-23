@@ -11,7 +11,17 @@ type Connection = {
   google_email: string | null;
   last_sheet_sync_at: string | null;
   last_calendar_sync_at: string | null;
+  initial_imported_at: string | null;
+  last_sheet_export_at: string | null;
+  last_sheet_export_error: string | null;
+  granted_scopes: string | null;
+  sync_lock_at: string | null;
 };
+export const GOOGLE_SHEETS_WRITE_SCOPE =
+  'https://www.googleapis.com/auth/spreadsheets';
+export function hasGoogleScope(scopes: string | null, scope: string) {
+  return Boolean(scopes?.split(/\s+/).includes(scope));
+}
 export async function connectionFor(
   userId: string,
 ): Promise<Connection | null> {
@@ -23,9 +33,16 @@ export async function connectionFor(
   if (error) throw error;
   return data as Connection | null;
 }
-export async function accessToken(userId: string) {
+export async function accessToken(userId: string, requiredScope?: string) {
   const connection = await connectionFor(userId);
   if (!connection) throw new Error('Google 계정을 연결해 주세요.');
+  if (
+    requiredScope &&
+    !hasGoogleScope(connection.granted_scopes, requiredScope)
+  )
+    throw new Error(
+      'Google Sheets 쓰기 권한이 필요합니다. Google 계정을 다시 연결해 주세요.',
+    );
   if (new Date(connection.expires_at).getTime() > Date.now() + 60_000)
     return decrypt(connection.access_token_encrypted);
   if (!connection.refresh_token_encrypted)
@@ -45,12 +62,22 @@ export async function accessToken(userId: string) {
   const token = (await response.json()) as {
     access_token: string;
     expires_in: number;
+    scope?: string;
   };
+  if (
+    requiredScope &&
+    token.scope &&
+    !hasGoogleScope(token.scope, requiredScope)
+  )
+    throw new Error(
+      'Google Sheets 쓰기 권한이 없습니다. Google 계정을 다시 연결해 주세요.',
+    );
   await adminClient()
     .from('google_connections')
     .update({
       access_token_encrypted: encrypt(token.access_token),
       expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(),
+      ...(token.scope ? { granted_scopes: token.scope } : {}),
     })
     .eq('user_id', userId);
   return token.access_token;

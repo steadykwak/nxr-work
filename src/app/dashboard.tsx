@@ -4,6 +4,8 @@ import { createBrowserClient } from '@supabase/ssr';
 import {
   CalendarDays,
   Check,
+  ChevronLeft,
+  ChevronRight,
   CircleAlert,
   Clock3,
   ExternalLink,
@@ -19,8 +21,12 @@ import {
   dueUrgency,
   effectiveCompleted,
   eventSeoulDate,
+  meetingViewEvents,
   ongoingIncompleteTasks,
+  pastMeetingWeek,
   todayMeetings,
+  weekRange,
+  type MeetingView,
 } from '@/lib/today';
 export type Task = {
   id: string;
@@ -42,7 +48,11 @@ type Props = {
   googleReady: boolean;
   email?: string;
   connected?: boolean;
-  lastSync?: string;
+  initialImportedAt?: string;
+  lastExportAt?: string;
+  lastExportError?: string;
+  writeAccess?: boolean;
+  syncInProgress?: boolean;
   lastCalendarSync?: string;
   tasks: Task[];
   events: CalendarEvent[];
@@ -81,7 +91,11 @@ export default function Dashboard({
   googleReady,
   email,
   connected,
-  lastSync,
+  initialImportedAt,
+  lastExportAt,
+  lastExportError,
+  writeAccess,
+  syncInProgress,
   lastCalendarSync,
   tasks: initialTasks,
   events,
@@ -94,6 +108,8 @@ export default function Dashboard({
     'today',
   );
   const [filter, setFilter] = useState<'all' | 'overdue' | 'upcoming'>('all');
+  const [meetingView, setMeetingView] = useState<MeetingView>('today');
+  const [pastWeekStart, setPastWeekStart] = useState(weekRange(today).monday);
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, startTransition] = useTransition();
@@ -114,6 +130,17 @@ export default function Dashboard({
     (task) => task.source_due_date === today && !completed(task),
   );
   const todayEvents = todayMeetings(events, today);
+  const pastEvents = meetingViewEvents(events, today, 'past');
+  const firstPastWeek = pastEvents.length
+    ? weekRange(eventSeoulDate(pastEvents[0])).monday
+    : weekRange(today).monday;
+  const lastPastWeek = pastEvents.length
+    ? weekRange(eventSeoulDate(pastEvents[pastEvents.length - 1])).monday
+    : weekRange(today).monday;
+  const visibleMeetings =
+    meetingView === 'past'
+      ? pastMeetingWeek(events, today, pastWeekStart)
+      : meetingViewEvents(events, today, meetingView);
   const ongoingTasks = ongoingIncompleteTasks(tasks, today);
   const timeline = [
     ...tasks.map((task) => ({
@@ -121,7 +148,7 @@ export default function Dashboard({
       kind: 'task' as const,
       task,
     })),
-    ...events.map((event) => ({
+    ...meetingViewEvents(events, today, 'all').map((event) => ({
       date: eventSeoulDate(event),
       kind: 'event' as const,
       event,
@@ -139,21 +166,28 @@ export default function Dashboard({
     setNotice('');
     startTransition(async () => {
       try {
-        const response = await fetch('/api/sync', { method: 'POST' });
+        const response = await fetch(
+          initialImportedAt ? '/api/sync/export' : '/api/sync',
+          {
+            method: 'POST',
+          },
+        );
         const result = await response.json();
         if (!response.ok) throw new Error(result.error);
         setNotice(
-          `${result.imported}건을 가져왔습니다.${
-            result.warnings.length
-              ? ` 경고 ${result.warnings.length}건: ${result.warnings
-                  .slice(0, 4)
-                  .map(
-                    (w: { row: number; message: string }) =>
-                      `${w.row}행 ${w.message}`,
-                  )
-                  .join(', ')}`
-              : ''
-          }`,
+          initialImportedAt
+            ? `${result.exported}건을 Google Sheets에 반영했습니다.`
+            : `${result.imported}건을 가져왔습니다.${
+                result.warnings.length
+                  ? ` 경고 ${result.warnings.length}건: ${result.warnings
+                      .slice(0, 4)
+                      .map(
+                        (w: { row: number; message: string }) =>
+                          `${w.row}행 ${w.message}`,
+                      )
+                      .join(', ')}`
+                  : ''
+              }`,
         );
         location.reload();
       } catch (error) {
@@ -312,10 +346,18 @@ export default function Dashboard({
             <span className={configured ? 'dot green' : 'dot'} /> Supabase{' '}
             <b>{configured ? '설정됨' : '설정 필요'}</b>
           </div>
-          {lastSync && (
+          {initialImportedAt && (
             <small className="sync-time">
-              시트 동기화{' '}
-              {new Date(lastSync).toLocaleString('ko-KR', {
+              초기 가져오기{' '}
+              {new Date(initialImportedAt).toLocaleString('ko-KR', {
+                timeZone: 'Asia/Seoul',
+              })}
+            </small>
+          )}
+          {lastExportAt && (
+            <small className="sync-time">
+              시트로 마지막 동기화{' '}
+              {new Date(lastExportAt).toLocaleString('ko-KR', {
                 timeZone: 'Asia/Seoul',
               })}
             </small>
@@ -342,7 +384,7 @@ export default function Dashboard({
                 </button>
               </>
             ) : (
-              <span className="account">읽기 전용 연동 준비</span>
+              <span className="account">Google 연동 준비</span>
             )}
           </div>
         </header>
@@ -372,17 +414,50 @@ export default function Dashboard({
                 {formatDate(today)} · 업무와 미팅을 한눈에 확인하세요.
               </p>
             </div>
-            {email && connected && (
-              <button className="primary" onClick={sync} disabled={busy}>
+            {email && connected && (!initialImportedAt || writeAccess) && (
+              <button
+                className="primary"
+                onClick={sync}
+                disabled={busy || syncInProgress}
+              >
                 <RefreshCw size={16} className={busy ? 'spinning' : ''} />{' '}
-                {busy ? '가져오는 중' : '시트 동기화'}
+                {busy || syncInProgress
+                  ? '동기화 진행 중'
+                  : initialImportedAt
+                    ? '지금 동기화'
+                    : '초기 동기화'}
               </button>
             )}
+            {email && connected && initialImportedAt && !writeAccess && (
+              <a className="primary" href="/api/google/connect">
+                Google 쓰기 권한 연결
+              </a>
+            )}
           </div>
+          {initialImportedAt && (
+            <p className="sync-status" role="status">
+              {syncInProgress ? 'Google Sheets 동기화 진행 중 · ' : ''}
+              {lastExportAt
+                ? `마지막 성공 ${new Date(lastExportAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })}`
+                : 'Google Sheets로 동기화한 기록이 없습니다.'}
+            </p>
+          )}
           {notice && (
             <div className="notice" role="status">
               <CircleAlert size={16} />
               {notice}
+            </div>
+          )}
+          {initialImportedAt && lastExportError && (
+            <div className="notice error" role="alert">
+              <CircleAlert size={16} /> 마지막 시트 동기화 실패:{' '}
+              {lastExportError}
+            </div>
+          )}
+          {initialImportedAt && !writeAccess && connected && (
+            <div className="notice">
+              <CircleAlert size={16} /> Google Sheets 쓰기 권한을 다시 승인해야
+              자동·수동 동기화를 실행할 수 있습니다.
             </div>
           )}
           {!configured && (
@@ -406,8 +481,8 @@ export default function Dashboard({
               <Link2 size={22} />
               <h2>Google 계정을 연결해 주세요</h2>
               <p>
-                시트와 캘린더 읽기 권한만 요청합니다. OAuth 화면에서 계정을 직접
-                선택할 수 있습니다.
+                시트 읽기·쓰기와 캘린더 읽기 권한을 요청합니다. OAuth 화면에서
+                계정을 직접 선택할 수 있습니다.
               </p>
               <a className="primary" href="/api/google/connect">
                 Google 연결 <ArrowUpRight size={16} />
@@ -462,7 +537,12 @@ export default function Dashboard({
                         </span>
                         <h2>오늘 예정된 미팅</h2>
                       </div>
-                      <button onClick={() => setTab('events')}>
+                      <button
+                        onClick={() => {
+                          setMeetingView('all');
+                          setTab('events');
+                        }}
+                      >
                         전체 보기 <ArrowUpRight size={15} />
                       </button>
                     </div>
@@ -571,13 +651,73 @@ export default function Dashboard({
               )}
               {tab === 'events' && (
                 <section>
+                  <div className="toolbar">
+                    <div
+                      className="filters meeting-filters"
+                      aria-label="미팅 일정 기간"
+                    >
+                      {(
+                        [
+                          ['today', '오늘'],
+                          ['week', '이번 주'],
+                          ['fiveDays', '+5일'],
+                          ['past', '지난 회의'],
+                          ['all', '전체'],
+                        ] as const
+                      ).map(([view, label]) => (
+                        <button
+                          key={view}
+                          className={meetingView === view ? 'selected' : ''}
+                          aria-pressed={meetingView === view}
+                          onClick={() => {
+                            setMeetingView(view);
+                            if (view === 'past') setPastWeekStart(lastPastWeek);
+                          }}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  {meetingView === 'past' && (
+                    <div
+                      className="week-pagination"
+                      role="group"
+                      aria-label="지난 회의 주별 이동"
+                    >
+                      <button
+                        onClick={() =>
+                          setPastWeekStart(weekRange(pastWeekStart, -1).monday)
+                        }
+                        disabled={
+                          !pastEvents.length || pastWeekStart <= firstPastWeek
+                        }
+                      >
+                        <ChevronLeft size={15} /> 이전 주
+                      </button>
+                      <span aria-live="polite">
+                        {pastWeekStart} ~ {weekRange(pastWeekStart).sunday}
+                      </span>
+                      <button
+                        onClick={() =>
+                          setPastWeekStart(weekRange(pastWeekStart, 1).monday)
+                        }
+                        disabled={
+                          !pastEvents.length || pastWeekStart >= lastPastWeek
+                        }
+                      >
+                        다음 주 <ChevronRight size={15} />
+                      </button>
+                    </div>
+                  )}
                   <div className="list">
-                    {events.length ? (
-                      events.map(eventRow)
+                    {visibleMeetings.length ? (
+                      visibleMeetings.map(eventRow)
                     ) : (
                       <p className="empty">
-                        표시할 일정이 없습니다. Google Calendar 연결을 확인해
-                        주세요.
+                        {events.length
+                          ? '이 기간에 표시할 미팅 일정이 없습니다.'
+                          : '표시할 미팅 일정이 없습니다. Google Calendar 연결을 확인해 주세요.'}
                       </p>
                     )}
                   </div>

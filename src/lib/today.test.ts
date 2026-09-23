@@ -6,6 +6,7 @@ import {
   isLunchEvent,
   meetingViewEvents,
   ongoingIncompleteTasks,
+  pastMeetingWeek,
   todayMeetings,
   weekRange,
   type MeetingView,
@@ -143,30 +144,99 @@ describe('미팅 일정 기간별 보기', () => {
       monday: '2026-09-21',
       sunday: '2026-09-27',
     });
+    expect(weekRange(today, -1)).toEqual({
+      monday: '2026-09-14',
+      sunday: '2026-09-20',
+    });
+    expect(weekRange('2026-09-28', -1)).toEqual({
+      monday: '2026-09-21',
+      sunday: '2026-09-27',
+    });
     expect(
       meetingViewEvents(events, today, 'week').map((item) => item.title),
     ).toEqual(['지난 월요일', '오늘 오전', '오늘 오후', '일요일 늦게']);
   });
 
-  it('오늘 포함 5일과 지난 회의를 구분하고 날짜·시작 시간순으로 정렬한다', () => {
+  it('지난 회의를 월~일 주별로 나누고 오늘 일정과 점심을 제외한다', () => {
+    expect(
+      pastMeetingWeek(events, today, '2026-09-21').map((item) => item.title),
+    ).toEqual(['지난 월요일']);
+    expect(
+      pastMeetingWeek(events, today, '2026-09-20').map((item) => item.title),
+    ).toEqual(['이전 일요일']);
+    expect(
+      pastMeetingWeek(events, today, '2026-09-14').map((item) => item.title),
+    ).toEqual(['이전 일요일']);
+  });
+
+  it('오늘 포함 평일 5일과 지난 회의를 구분하고 날짜·시작 시간순으로 정렬한다', () => {
     expect(
       meetingViewEvents(events, today, 'today').map((item) => item.title),
     ).toEqual(['오늘 오전', '오늘 오후']);
     expect(
       meetingViewEvents(events, today, 'fiveDays').map((item) => item.title),
-    ).toEqual(['오늘 오전', '오늘 오후', '일요일 늦게']);
+    ).toEqual(['오늘 오전', '오늘 오후', '다음 월요일']);
     expect(
       meetingViewEvents(events, today, 'past').map((item) => item.title),
     ).toEqual(['이전 일요일', '지난 월요일']);
     const crossMonth = [
-      event('5일째', '2026-10-03T00:00:00+09:00', '2026-10-03T01:00:00+09:00'),
-      event('6일째', '2026-10-04T00:00:00+09:00', '2026-10-04T01:00:00+09:00'),
+      event('토요일', '2026-10-03T09:00:00+09:00', '2026-10-03T10:00:00+09:00'),
+      event('일요일', '2026-10-04T09:00:00+09:00', '2026-10-04T10:00:00+09:00'),
+      event(
+        '5번째 평일',
+        '2026-10-05T09:00:00+09:00',
+        '2026-10-05T10:00:00+09:00',
+      ),
+      event(
+        '6번째 평일',
+        '2026-10-06T09:00:00+09:00',
+        '2026-10-06T10:00:00+09:00',
+      ),
     ];
     expect(
       meetingViewEvents(crossMonth, '2026-09-29', 'fiveDays').map(
         (item) => item.title,
       ),
-    ).toEqual(['5일째']);
+    ).toEqual(['5번째 평일']);
+  });
+
+  it('수요일 시작은 수·목·금·월·화이며 주말 시작은 다음 월요일부터 센다', () => {
+    const dates = [
+      '2026-09-23',
+      '2026-09-24',
+      '2026-09-25',
+      '2026-09-26',
+      '2026-09-27',
+      '2026-09-28',
+      '2026-09-29',
+      '2026-09-30',
+      '2026-10-01',
+      '2026-10-02',
+    ].map((day) =>
+      event(day, `${day}T09:00:00+09:00`, `${day}T10:00:00+09:00`),
+    );
+    expect(
+      meetingViewEvents(dates, '2026-09-23', 'fiveDays').map(
+        (item) => item.title,
+      ),
+    ).toEqual([
+      '2026-09-23',
+      '2026-09-24',
+      '2026-09-25',
+      '2026-09-28',
+      '2026-09-29',
+    ]);
+    expect(
+      meetingViewEvents(dates, '2026-09-26', 'fiveDays').map(
+        (item) => item.title,
+      ),
+    ).toEqual([
+      '2026-09-28',
+      '2026-09-29',
+      '2026-09-30',
+      '2026-10-01',
+      '2026-10-02',
+    ]);
   });
 
   it('모든 보기에 점심 제외 규칙을 동일하게 적용한다', () => {

@@ -68,10 +68,36 @@ function dateAfter(day: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
-export function weekRange(today: string) {
+function isWeekday(day: string) {
+  const weekday = new Date(`${day}T00:00:00Z`).getUTCDay();
+  return weekday >= 1 && weekday <= 5;
+}
+
+function fifthWeekdayFrom(today: string) {
+  let day = today;
+  let count = 0;
+  while (true) {
+    if (isWeekday(day) && ++count === 5) return day;
+    day = dateAfter(day, 1);
+  }
+}
+
+export function weekRange(today: string, weekOffset = 0) {
   const weekday = new Date(`${today}T00:00:00Z`).getUTCDay();
-  const monday = dateAfter(today, -((weekday + 6) % 7));
+  const monday = dateAfter(today, -((weekday + 6) % 7) + weekOffset * 7);
   return { monday, sunday: dateAfter(monday, 6) };
+}
+
+export function pastMeetingWeek<T extends CalendarItem>(
+  events: T[],
+  today: string,
+  weekDay: string,
+): T[] {
+  const { monday, sunday } = weekRange(weekDay);
+  return meetingViewEvents(events, today, 'past').filter((event) => {
+    const day = eventSeoulDate(event);
+    return day >= monday && day <= sunday;
+  });
 }
 
 export function meetingViewEvents<T extends CalendarItem>(
@@ -80,7 +106,7 @@ export function meetingViewEvents<T extends CalendarItem>(
   view: MeetingView,
 ): T[] {
   const { monday, sunday } = weekRange(today);
-  const fifthDay = dateAfter(today, 4);
+  const fifthDay = view === 'fiveDays' ? fifthWeekdayFrom(today) : today;
   return events
     .filter((event) => {
       if (isLunchEvent(event)) return false;
@@ -91,7 +117,7 @@ export function meetingViewEvents<T extends CalendarItem>(
         case 'week':
           return day >= monday && day <= sunday;
         case 'fiveDays':
-          return day >= today && day <= fifthDay;
+          return day >= today && day <= fifthDay && isWeekday(day);
         case 'past':
           return day < today;
         case 'all':
