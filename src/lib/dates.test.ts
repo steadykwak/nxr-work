@@ -7,8 +7,27 @@ describe('시트 가져오기', () => {
     expect(sheetDate('09/29 (월)', 2026)).toBeNull();
   });
   it('빈 ID와 중복 ID는 건너뛰고 경고한다', () => {
-    const row = (id: string) => [id, '', '곽운도', '', '', '업무', '', '', '2026-09-23', '2026-09-24', '', 'FALSE', '시작 전'];
-    const result = parseSheetRows([[], row('a'), row('a'), row('')], 'sheet', 1, 2026);
+    const row = (id: string) => [
+      id,
+      '',
+      '곽운도',
+      '',
+      '',
+      '업무',
+      '',
+      '',
+      '2026-09-23',
+      '2026-09-24',
+      '',
+      'FALSE',
+      '시작 전',
+    ];
+    const result = parseSheetRows(
+      [[], row('a'), row('a'), row('')],
+      'sheet',
+      1,
+      2026,
+    );
     expect(result.tasks).toHaveLength(1);
     expect(result.warnings).toHaveLength(2);
   });
