@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { currentUser, adminClient } from '@/lib/supabase';
 import { encrypt } from '@/lib/security';
-import { required } from '@/lib/config';
+import { required, siteUrl } from '@/lib/config';
 export async function GET(request: NextRequest) {
+  const origin = siteUrl();
   const redirect = (message: string) =>
     NextResponse.redirect(
-      new URL(`/?error=${encodeURIComponent(message)}`, request.url),
+      new URL(`/?error=${encodeURIComponent(message)}`, origin),
     );
   const state = request.nextUrl.searchParams.get('state');
   if (!state || state !== request.cookies.get('google_oauth_state')?.value)
@@ -21,7 +22,7 @@ export async function GET(request: NextRequest) {
         code,
         client_id: required('GOOGLE_CLIENT_ID'),
         client_secret: required('GOOGLE_CLIENT_SECRET'),
-        redirect_uri: `${required('NEXT_PUBLIC_SITE_URL')}/api/google/callback`,
+        redirect_uri: `${origin}/api/google/callback`,
         grant_type: 'authorization_code',
       }),
       cache: 'no-store',
@@ -57,7 +58,7 @@ export async function GET(request: NextRequest) {
           .from('google_connections')
           .insert({ user_id: user.id, ...values });
     if (error) throw error;
-    const result = NextResponse.redirect(new URL('/?connected=1', request.url));
+    const result = NextResponse.redirect(new URL('/?connected=1', origin));
     result.cookies.delete('google_oauth_state');
     return result;
   } catch (error) {

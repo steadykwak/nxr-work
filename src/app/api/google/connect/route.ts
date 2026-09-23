@@ -1,16 +1,17 @@
 import { NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { currentUser } from '@/lib/supabase';
-import { googleConfigured, required } from '@/lib/config';
-export async function GET(request: Request) {
+import { googleConfigured, required, siteUrl } from '@/lib/config';
+export async function GET() {
+  const origin = siteUrl();
   if (!googleConfigured())
-    return NextResponse.redirect(new URL('/?error=google-config', request.url));
+    return NextResponse.redirect(new URL('/?error=google-config', origin));
   const { user } = await currentUser();
-  if (!user) return NextResponse.redirect(new URL('/', request.url));
+  if (!user) return NextResponse.redirect(new URL('/', origin));
   const state = randomBytes(24).toString('hex');
   const params = new URLSearchParams({
     client_id: required('GOOGLE_CLIENT_ID'),
-    redirect_uri: `${required('NEXT_PUBLIC_SITE_URL')}/api/google/callback`,
+    redirect_uri: `${origin}/api/google/callback`,
     response_type: 'code',
     scope:
       'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.events.readonly',

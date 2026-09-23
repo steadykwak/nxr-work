@@ -21,3 +21,34 @@ export function required(name: string): string {
   if (!value) throw new Error(`${name} 환경 변수가 필요합니다.`);
   return value;
 }
+
+export const PRODUCTION_SITE_URL = 'https://nxr-work.vercel.app';
+export const LOCAL_SITE_URL = 'http://localhost:3000';
+
+/**
+ * OAuth redirects only target an explicitly allowed application origin.
+ * Vercel preview hosts also return to the canonical production app instead of
+ * trusting a forwarded Host header or an arbitrary preview domain.
+ */
+export function siteUrl() {
+  if (
+    process.env.VERCEL_ENV === 'production' ||
+    process.env.VERCEL_ENV === 'preview'
+  )
+    return PRODUCTION_SITE_URL;
+
+  if (process.env.NODE_ENV === 'development') return LOCAL_SITE_URL;
+
+  const configured = process.env.NEXT_PUBLIC_SITE_URL;
+  if (!configured) return LOCAL_SITE_URL;
+  try {
+    const origin = new URL(configured).origin;
+    if (origin === PRODUCTION_SITE_URL || origin === LOCAL_SITE_URL)
+      return origin;
+  } catch {
+    // Report the same safe configuration error below.
+  }
+  throw new Error(
+    `NEXT_PUBLIC_SITE_URL은 ${LOCAL_SITE_URL} 또는 ${PRODUCTION_SITE_URL}이어야 합니다.`,
+  );
+}

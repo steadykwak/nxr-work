@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import { CircleAlert, Layers3, Link2 } from 'lucide-react';
 
-type Props = { configured: boolean; error?: string };
+type Props = { configured: boolean; error?: string; callbackUrl: string };
 
 const messages: Record<string, string> = {
   cancelled: 'Google 로그인이 취소되었습니다. 다시 시도해 주세요.',
@@ -13,7 +13,7 @@ const messages: Record<string, string> = {
   session: '로그인 세션이 만료되었습니다. 다시 로그인해 주세요.',
 };
 
-export default function LoginScreen({ configured, error }: Props) {
+export default function LoginScreen({ configured, error, callbackUrl }: Props) {
   const [pending, setPending] = useState(false);
   const [localError, setLocalError] = useState('');
 
@@ -27,7 +27,7 @@ export default function LoginScreen({ configured, error }: Props) {
       );
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: `${window.location.origin}/auth/callback` },
+        options: { redirectTo: callbackUrl },
       });
       if (authError) throw authError;
     } catch {

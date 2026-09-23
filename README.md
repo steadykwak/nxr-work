@@ -32,14 +32,14 @@
 1. 사용자가 Supabase 프로젝트를 생성합니다. 이 앱은 프로젝트를 자동 생성하지 않습니다.
 2. SQL Editor에서 [`supabase/migrations/202609230001_init.sql`](supabase/migrations/202609230001_init.sql)을 실행합니다. 기존 프로젝트에는 이미 적용됐는지 확인하고 다시 실행하지 않습니다. 이어서 [`supabase/migrations/202609230002_sheet_export.sql`](supabase/migrations/202609230002_sheet_export.sql)을 수동 적용합니다. 이 마이그레이션은 과거 `last_sheet_sync_at`이 있는 연결을 초기 가져오기 완료로 표시합니다. `tasks`에는 사용자별 RLS가 적용됩니다. `google_connections`는 일반 사용자 접근을 막고 서버의 secret/service role 권한만 사용합니다.
 3. Authentication → Providers → Google을 활성화하고 Google Cloud의 웹 OAuth 클라이언트 ID와 비밀값을 **Supabase 대시보드에 직접** 입력합니다. 앱의 `.env.local`에 있는 `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET`는 별도의 Sheets·Calendar 연동에 쓰이며, Google 로그인 버튼에는 사용하지 않습니다.
-4. Authentication → URL Configuration에서 Site URL을 `http://localhost:3000`으로, Redirect URLs에 `http://localhost:3000/auth/callback`을 설정합니다. Google Cloud 웹 OAuth 클라이언트의 승인된 JavaScript 원본에 `http://localhost:3000`을 추가합니다. **승인된 리디렉션 URI**에는 앱 경로가 아니라 Supabase Google 제공자 화면에 표시된 콜백 URL을 등록합니다. 형식은 `NEXT_PUBLIC_SUPABASE_URL` 값 뒤에 `/auth/v1/callback`을 붙인 주소입니다. 임의의 프로젝트 주소를 사용하지 말고 대시보드의 실제 주소와 일치하는지 확인하세요. OAuth 동의 화면에는 로그인용 `openid`, `userinfo.email`, `userinfo.profile` 범위만 설정합니다.
+4. Authentication → URL Configuration에서 Site URL을 `https://nxr-work.vercel.app`으로 설정합니다. Redirect URLs에는 `https://nxr-work.vercel.app/auth/callback`과 `http://localhost:3000/auth/callback`을 각각 등록합니다. Supabase에 등록되지 않은 `redirectTo`는 Site URL로 대체될 수 있으므로 두 콜백이 모두 필요합니다. Google Cloud에서 **Supabase 로그인용** 웹 OAuth 클라이언트의 승인된 리디렉션 URI에는 앱 콜백이 아니라 Supabase Google 제공자 화면에 표시된 URL을 등록합니다. 정확한 형식은 `https://<실제-project-ref>.supabase.co/auth/v1/callback`입니다. `https://nxr-work.vercel.app/auth/callback`이나 `/api/google/callback`과 혼동하지 마세요. OAuth 동의 화면에는 로그인용 `openid`, `userinfo.email`, `userinfo.profile` 범위만 설정합니다.
 5. Project URL, publishable/anon key, secret key 또는 기존 service role key를 프로젝트 설정에서 확인합니다. secret/service role key는 서버 환경 변수에만 넣습니다.
 
 ## 2. Google 설정
 
 1. Google Cloud 프로젝트에서 **Google Sheets API**와 **Google Calendar API**를 활성화합니다.
 2. OAuth 동의 화면을 설정하고 테스트 모드라면 사용할 Google 계정을 테스트 사용자로 추가합니다. 시트에 접근 가능한 계정을 OAuth 화면에서 선택해야 합니다.
-3. OAuth 클라이언트 유형을 **웹 애플리케이션**으로 만들고 승인된 리디렉션 URI에 `http://localhost:3000/api/google/callback`을 추가합니다.
+3. 별도 Sheets·Calendar 연동용 OAuth 클라이언트의 승인된 리디렉션 URI에는 `https://nxr-work.vercel.app/api/google/callback`과 `http://localhost:3000/api/google/callback`을 추가합니다. 이 클라이언트는 Supabase 로그인용 클라이언트 및 `/auth/v1/callback`과 용도가 다릅니다.
 4. 별도 시트·캘린더 연결은 `https://www.googleapis.com/auth/spreadsheets`(시트 읽기·쓰기)와 `https://www.googleapis.com/auth/calendar.events.readonly`(캘린더 읽기) 범위를 요청합니다. Supabase의 Google **로그인** 권한과는 별개입니다. 이전 `spreadsheets.readonly` 연결은 쓰기 권한이 없으므로 앱에서 **Google 쓰기 권한 연결**을 눌러 재인증해야 합니다. Google Cloud OAuth 동의 화면에도 새 범위를 설정하고, 필요한 경우 검증 절차를 완료합니다. 승인된 권한을 실제 토큰 응답에서 확인하며 거부되면 시트 쓰기를 실행하지 않습니다. 캘린더는 선택한 계정의 기본 캘린더를 읽습니다.
 5. 32바이트 암호화 키를 생성합니다: `openssl rand -base64 32`. 이 값은 로컬 `.env.local`에 직접 넣습니다. 채팅에 키나 토큰을 붙여 넣지 마세요.
 
@@ -52,7 +52,7 @@ npm install
 npm run dev
 ```
 
-현재 입력된 Supabase URL·publishable key·스프레드시트 설정은 Git에서 제외되는 `.env.local`에 보존돼 있습니다. 나머지 값은 `.env.local`에 직접 설정합니다. `GOOGLE_SPREADSHEET_ID`는 위 ID, `GOOGLE_SHEET_NAME`은 `곽운도`, `GOOGLE_SHEET_DATE_YEAR`는 현재 데이터 기준 `2026`, `NEXT_PUBLIC_SITE_URL`은 `http://localhost:3000`을 입력합니다. `.env.example`은 변수명만 제공하고 `.env.local`은 Git에서 제외합니다. Supabase 브라우저 키는 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`를 사용합니다. 서버 관리자 키는 `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY` 중 하나를 설정합니다. 브라우저에서 `http://localhost:3000`을 열어 **Google로 로그인** → 별도 Google Sheets·Calendar 연결 → **초기 동기화** 순서로 진행합니다. 설정 전에는 안내 화면을 표시하며 샘플 데이터를 실제 연동 데이터처럼 보여주지 않습니다.
+현재 입력된 Supabase URL·publishable key·스프레드시트 설정은 Git에서 제외되는 `.env.local`에 보존돼 있습니다. 나머지 값은 환경별로 직접 설정합니다. 로컬 `.env.local`의 `NEXT_PUBLIC_SITE_URL`은 `http://localhost:3000`, Vercel Production 환경 변수는 `https://nxr-work.vercel.app`을 사용합니다. Vercel Preview도 보안을 위해 임의의 프리뷰 호스트 대신 운영 도메인으로 복귀합니다. `GOOGLE_SPREADSHEET_ID`는 위 ID, `GOOGLE_SHEET_NAME`은 `곽운도`, `GOOGLE_SHEET_DATE_YEAR`는 현재 데이터 기준 `2026`을 입력합니다. `.env.example`은 변수명만 제공하고 `.env.local`은 Git에서 제외합니다. Supabase 브라우저 키는 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`를 사용합니다. 서버 관리자 키는 `SUPABASE_SECRET_KEY` 또는 `SUPABASE_SERVICE_ROLE_KEY` 중 하나를 설정합니다. 브라우저에서 `http://localhost:3000`을 열어 **Google로 로그인** → 별도 Google Sheets·Calendar 연결 → **초기 동기화** 순서로 진행합니다. 설정 전에는 안내 화면을 표시하며 샘플 데이터를 실제 연동 데이터처럼 보여주지 않습니다.
 
 ## 동기화 규칙
 

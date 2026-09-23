@@ -1,15 +1,16 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextRequest, NextResponse } from 'next/server';
-import { required } from '@/lib/config';
+import { required, siteUrl } from '@/lib/config';
 
 export async function GET(request: NextRequest) {
+  const origin = siteUrl();
   const login = (error: string) =>
-    NextResponse.redirect(new URL(`/login?error=${error}`, request.url));
+    NextResponse.redirect(new URL(`/login?error=${error}`, origin));
   if (request.nextUrl.searchParams.has('error')) return login('cancelled');
   const code = request.nextUrl.searchParams.get('code');
   if (!code) return login('callback');
 
-  let response = NextResponse.redirect(new URL('/', request.url));
+  let response = NextResponse.redirect(new URL('/', origin));
   const supabase = createServerClient(
     required('NEXT_PUBLIC_SUPABASE_URL'),
     required('NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'),
@@ -26,7 +27,7 @@ export async function GET(request: NextRequest) {
           }[],
         ) {
           items.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.redirect(new URL('/', request.url));
+          response = NextResponse.redirect(new URL('/', origin));
           items.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options),
           );

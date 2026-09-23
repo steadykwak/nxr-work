@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation';
-import { publicConfigured } from '@/lib/config';
+import { publicConfigured, siteUrl } from '@/lib/config';
 import { currentUser } from '@/lib/supabase';
 import LoginScreen from './screen';
 
@@ -14,5 +14,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
     if (user) redirect('/');
   }
   const { error } = await searchParams;
-  return <LoginScreen configured={configured} error={error} />;
+  return (
+    <LoginScreen
+      configured={configured}
+      error={error}
+      callbackUrl={`${siteUrl()}/auth/callback`}
+    />
+  );
 }
