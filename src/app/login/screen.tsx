@@ -29,11 +29,10 @@ export default function LoginScreen({ configured, error, callbackUrl }: Props) {
         provider: 'google',
         options: {
           redirectTo: callbackUrl,
-          scopes:
-            'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.readonly',
           queryParams: {
-            access_type: 'offline',
-            prompt: 'consent',
+            // Login only authenticates the user. Sheets and Calendar access
+            // is requested separately from the explicit Google connect flow.
+            prompt: 'select_account',
           },
         },
       });
