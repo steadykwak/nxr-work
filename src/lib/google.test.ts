@@ -51,4 +51,39 @@ describe('Google Sheets 쓰기 권한', () => {
       ),
     ).toBe(true);
   });
+
+  it('더하기표(+) 및 콤마(,), URL 인코딩 등 다양한 구분자를 지원한다', () => {
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/calendar.events.readonly+https://www.googleapis.com/auth/spreadsheets',
+        GOOGLE_SHEETS_WRITE_SCOPE,
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleScope(
+        'https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fspreadsheets+https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fcalendar.events.readonly',
+        GOOGLE_SHEETS_WRITE_SCOPE,
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/calendar.events.readonly,https://www.googleapis.com/auth/spreadsheets',
+        GOOGLE_SHEETS_WRITE_SCOPE,
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/spreadsheets/',
+        GOOGLE_SHEETS_WRITE_SCOPE,
+      ),
+    ).toBe(true);
+    expect(
+      hasGoogleScope(
+        'https://www.googleapis.com/auth/drive',
+        GOOGLE_SHEETS_WRITE_SCOPE,
+      ),
+    ).toBe(true);
+    expect(hasGoogleScope(null, GOOGLE_SHEETS_WRITE_SCOPE)).toBe(false);
+    expect(hasGoogleScope('', GOOGLE_SHEETS_WRITE_SCOPE)).toBe(false);
+  });
 });

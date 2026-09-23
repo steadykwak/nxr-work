@@ -19,8 +19,41 @@ type Connection = {
 };
 export const GOOGLE_SHEETS_WRITE_SCOPE =
   'https://www.googleapis.com/auth/spreadsheets';
-export function hasGoogleScope(scopes: string | null, scope: string) {
-  return Boolean(scopes?.split(/\s+/).includes(scope));
+
+export function normalizeScopes(
+  scopes: string | null | undefined,
+): string | null {
+  if (!scopes) return null;
+  try {
+    return decodeURIComponent(scopes)
+      .replace(/\+/g, ' ')
+      .trim()
+      .replace(/\s+/g, ' ');
+  } catch {
+    return scopes.replace(/\+/g, ' ').trim().replace(/\s+/g, ' ');
+  }
+}
+
+export function hasGoogleScope(
+  scopes: string | null | undefined,
+  scope: string,
+): boolean {
+  if (!scopes) return false;
+  const normalized = normalizeScopes(scopes);
+  if (!normalized) return false;
+  const list = normalized.split(/[\s,]+/);
+  const targetClean = scope.trim().replace(/\/$/, '');
+  return list.some((item) => {
+    const cleanItem = item.trim().replace(/\/$/, '');
+    if (cleanItem === targetClean) return true;
+    if (
+      targetClean === GOOGLE_SHEETS_WRITE_SCOPE.replace(/\/$/, '') &&
+      cleanItem === 'https://www.googleapis.com/auth/drive'
+    ) {
+      return true;
+    }
+    return false;
+  });
 }
 export async function connectionFor(
   userId: string,
@@ -77,7 +110,7 @@ export async function accessToken(userId: string, requiredScope?: string) {
     .update({
       access_token_encrypted: encrypt(token.access_token),
       expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(),
-      ...(token.scope ? { granted_scopes: token.scope } : {}),
+      ...(token.scope ? { granted_scopes: normalizeScopes(token.scope) } : {}),
     })
     .eq('user_id', userId);
   return token.access_token;

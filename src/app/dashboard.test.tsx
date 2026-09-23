@@ -101,31 +101,34 @@ describe('시트 동기화 화면', () => {
     events: [],
   };
 
-  it('초기 가져오기 전에는 초기 동기화만 표시한다', () => {
+  it('연결된 사용자에게 시트 동기화 버튼만 표시하고 초기 동기화 및 쓰기 권한 연결 버튼은 표시하지 않는다', () => {
     const html = renderToStaticMarkup(<Dashboard {...base} />);
-    expect(html).toContain('초기 동기화');
-    expect(html).not.toContain('지금 동기화');
+    expect(html).toContain('시트 동기화');
+    expect(html).not.toContain('초기 동기화');
+    expect(html).not.toContain('Google 쓰기 권한 연결');
   });
 
-  it('초기 가져오기 뒤에는 쓰기 권한과 마지막 성공 상태를 표시한다', () => {
+  it('시트 동기화 버튼과 함께 마지막 성공 상태를 표시한다', () => {
     const html = renderToStaticMarkup(
       <Dashboard
         {...base}
         initialImportedAt="2026-09-22T00:00:00Z"
         lastExportAt="2026-09-23T00:00:00Z"
-        writeAccess
       />,
     );
-    expect(html).toContain('지금 동기화');
+    expect(html).toContain('시트 동기화');
     expect(html).toContain('마지막 성공');
-    expect(html).not.toContain('초기 동기화</button>');
+    expect(html).not.toContain('초기 동기화');
+    expect(html).not.toContain('Google 쓰기 권한 연결');
   });
 
-  it('쓰기 권한이 없으면 재인증 진입점을 표시한다', () => {
+  it('미연결 사용자에게는 시트 동기화 버튼을 노출하지 않고 연결 설정을 안내한다', () => {
     const html = renderToStaticMarkup(
-      <Dashboard {...base} initialImportedAt="2026-09-22T00:00:00Z" />,
+      <Dashboard {...base} connected={false} />,
     );
-    expect(html).toContain('Google 쓰기 권한 연결');
-    expect(html).not.toContain('지금 동기화');
+    expect(html).not.toContain('시트 동기화');
+    expect(html).toContain('Google 계정을 연결해 주세요');
+    expect(html).not.toContain('Google 쓰기 권한 연결');
+    expect(html).not.toContain('초기 동기화');
   });
 });

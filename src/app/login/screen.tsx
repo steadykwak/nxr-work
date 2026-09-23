@@ -27,7 +27,15 @@ export default function LoginScreen({ configured, error, callbackUrl }: Props) {
       );
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: 'google',
-        options: { redirectTo: callbackUrl },
+        options: {
+          redirectTo: callbackUrl,
+          scopes:
+            'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.events.readonly',
+          queryParams: {
+            access_type: 'offline',
+            prompt: 'consent',
+          },
+        },
       });
       if (authError) throw authError;
     } catch {
@@ -75,8 +83,8 @@ export default function LoginScreen({ configured, error, callbackUrl }: Props) {
               <>
                 <h2>Google 계정으로 시작하기</h2>
                 <p>
-                  Google 기본 프로필로 로그인합니다. 시트와 캘린더 읽기 권한은
-                  로그인 후 별도 연동 단계에서 요청합니다.
+                  Google 계정으로 로그인하여 업무와 캘린더 일정을
+                  한곳에서 확인하세요.
                 </p>
                 <button className="primary" onClick={signIn} disabled={pending}>
                   {pending ? 'Google 로그인으로 이동 중…' : 'Google로 로그인'}

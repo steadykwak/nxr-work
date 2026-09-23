@@ -94,7 +94,6 @@ export default function Dashboard({
   initialImportedAt,
   lastExportAt,
   lastExportError,
-  writeAccess,
   syncInProgress,
   lastCalendarSync,
   tasks: initialTasks,
@@ -166,29 +165,12 @@ export default function Dashboard({
     setNotice('');
     startTransition(async () => {
       try {
-        const response = await fetch(
-          initialImportedAt ? '/api/sync/export' : '/api/sync',
-          {
-            method: 'POST',
-          },
-        );
+        const response = await fetch('/api/sync/export', {
+          method: 'POST',
+        });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error);
-        setNotice(
-          initialImportedAt
-            ? `${result.exported}건을 Google Sheets에 반영했습니다.`
-            : `${result.imported}건을 가져왔습니다.${
-                result.warnings.length
-                  ? ` 경고 ${result.warnings.length}건: ${result.warnings
-                      .slice(0, 4)
-                      .map(
-                        (w: { row: number; message: string }) =>
-                          `${w.row}행 ${w.message}`,
-                      )
-                      .join(', ')}`
-                  : ''
-              }`,
-        );
+        setNotice(`${result.exported}건을 Google Sheets에 반영했습니다.`);
         location.reload();
       } catch (error) {
         setNotice(error instanceof Error ? error.message : '동기화 실패');
@@ -414,27 +396,18 @@ export default function Dashboard({
                 {formatDate(today)} · 업무와 미팅을 한눈에 확인하세요.
               </p>
             </div>
-            {email && connected && (!initialImportedAt || writeAccess) && (
+            {email && connected && (
               <button
                 className="primary"
                 onClick={sync}
                 disabled={busy || syncInProgress}
               >
                 <RefreshCw size={16} className={busy ? 'spinning' : ''} />{' '}
-                {busy || syncInProgress
-                  ? '동기화 진행 중'
-                  : initialImportedAt
-                    ? '지금 동기화'
-                    : '초기 동기화'}
+                {busy || syncInProgress ? '동기화 중...' : '시트 동기화'}
               </button>
             )}
-            {email && connected && initialImportedAt && !writeAccess && (
-              <a className="primary" href="/api/google/connect">
-                Google 쓰기 권한 연결
-              </a>
-            )}
           </div>
-          {initialImportedAt && (
+          {(initialImportedAt || lastExportAt) && (
             <p className="sync-status" role="status">
               {syncInProgress ? 'Google Sheets 동기화 진행 중 · ' : ''}
               {lastExportAt
@@ -448,16 +421,10 @@ export default function Dashboard({
               {notice}
             </div>
           )}
-          {initialImportedAt && lastExportError && (
+          {lastExportError && (
             <div className="notice error" role="alert">
               <CircleAlert size={16} /> 마지막 시트 동기화 실패:{' '}
               {lastExportError}
-            </div>
-          )}
-          {initialImportedAt && !writeAccess && connected && (
-            <div className="notice">
-              <CircleAlert size={16} /> Google Sheets 쓰기 권한을 다시 승인해야
-              자동·수동 동기화를 실행할 수 있습니다.
             </div>
           )}
           {!configured && (

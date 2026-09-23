@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { randomBytes } from 'node:crypto';
 import { currentUser } from '@/lib/supabase';
 import { googleConfigured, required, siteUrl } from '@/lib/config';
+import { GOOGLE_SHEETS_WRITE_SCOPE } from '@/lib/google';
 export async function GET() {
   const origin = siteUrl();
   if (!googleConfigured())
@@ -13,8 +14,7 @@ export async function GET() {
     client_id: required('GOOGLE_CLIENT_ID'),
     redirect_uri: `${origin}/api/google/callback`,
     response_type: 'code',
-    scope:
-      'https://www.googleapis.com/auth/spreadsheets https://www.googleapis.com/auth/calendar.events.readonly',
+    scope: `${GOOGLE_SHEETS_WRITE_SCOPE} https://www.googleapis.com/auth/calendar.events.readonly`,
     include_granted_scopes: 'true',
     access_type: 'offline',
     prompt: 'consent select_account',

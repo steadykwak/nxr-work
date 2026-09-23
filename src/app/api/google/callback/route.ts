@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { revalidatePath } from 'next/cache';
 import { currentUser, adminClient } from '@/lib/supabase';
 import { encrypt } from '@/lib/security';
+import { normalizeScopes } from '@/lib/google';
 import { required, siteUrl } from '@/lib/config';
 export async function GET(request: NextRequest) {
   const origin = siteUrl();
@@ -27,7 +29,17 @@ export async function GET(request: NextRequest) {
       }),
       cache: 'no-store',
     });
-    if (!response.ok) throw new Error(`토큰 교환 실패 (${response.status})`);
+    if (!response.ok) {
+      const errorBody = await response.text().catch(() => '');
+      console.error(
+        '[Google OAuth Token Exchange Error]:',
+        response.status,
+        errorBody,
+      );
+      throw new Error(
+        `토큰 교환 실패 (${response.status}): ${errorBody || response.statusText}`,
+      );
+    }
     const token = (await response.json()) as {
       access_token: string;
       refresh_token?: string;
@@ -36,10 +48,25 @@ export async function GET(request: NextRequest) {
     };
     const existing = await adminClient()
       .from('google_connections')
-      .select('refresh_token_encrypted')
+      .select('refresh_token_encrypted, granted_scopes')
       .eq('user_id', user.id)
       .maybeSingle();
-    if (existing.error) throw existing.error;
+    if (existing.error) {
+      console.error('[Google OAuth DB Lookup Error]:', existing.error);
+      throw existing.error;
+    }
+    const queryScope = request.nextUrl.searchParams.get('scope');
+    const rawScope = normalizeScopes(token.scope || queryScope);
+    const prevScopes = normalizeScopes(existing.data?.granted_scopes);
+    const mergedScopes =
+      Array.from(
+        new Set(
+          [
+            ...(prevScopes ? prevScopes.split(/\s+/) : []),
+            ...(rawScope ? rawScope.split(/\s+/) : []),
+          ].filter(Boolean),
+        ),
+      ).join(' ') || null;
     const values = {
       access_token_encrypted: encrypt(token.access_token),
       refresh_token_encrypted: token.refresh_token
@@ -47,7 +74,7 @@ export async function GET(request: NextRequest) {
         : (existing.data?.refresh_token_encrypted ?? null),
       expires_at: new Date(Date.now() + token.expires_in * 1000).toISOString(),
       google_email: null,
-      granted_scopes: token.scope ?? null,
+      granted_scopes: mergedScopes,
     };
     const { error } = existing.data
       ? await adminClient()
@@ -57,11 +84,17 @@ export async function GET(request: NextRequest) {
       : await adminClient()
           .from('google_connections')
           .insert({ user_id: user.id, ...values });
-    if (error) throw error;
+    if (error) {
+      console.error('[Google OAuth DB Save Error]:', error);
+      throw error;
+    }
+    revalidatePath('/', 'layout');
+    revalidatePath('/');
     const result = NextResponse.redirect(new URL('/?connected=1', origin));
     result.cookies.delete('google_oauth_state');
     return result;
   } catch (error) {
+    console.error('[Google OAuth Callback Error]:', error);
     return redirect(
       error instanceof Error ? error.message : 'Google 연결 실패',
     );
