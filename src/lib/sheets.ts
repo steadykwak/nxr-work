@@ -159,21 +159,30 @@ export function buildSheetUpdates(
     }
   });
 
-  return tasks.map((task) => {
+  const updates: { range: string; values: (string | boolean)[][] }[] = [];
+  const unmatchedIds: string[] = [];
+
+  for (const task of tasks) {
     const targetId = task.source_id || task.id;
     if (!targetId) {
-      throw new Error('시트에서 고유 업무 ID를 확인할 수 없습니다: (없음)');
+      unmatchedIds.push('(ID 없음)');
+      continue;
     }
     const matched =
       rows.get(targetId) ?? (task.id ? rows.get(task.id) : undefined);
-    if (!matched || matched.length !== 1) {
-      throw new Error(
-        `시트에서 고유 업무 ID를 확인할 수 없습니다: ${task.source_id ?? task.id ?? '(없음)'}`,
-      );
+
+    if (matched && matched.length > 1) {
+      throw new Error(`시트에서 고유 업무 ID가 중복되었습니다: ${targetId}`);
     }
+
+    if (!matched || matched.length === 0) {
+      unmatchedIds.push(targetId);
+      continue;
+    }
+
     const row = matched[0];
     const tab = `'${name.replaceAll("'", "''")}'`;
-    return {
+    updates.push({
       range: `${tab}!E${row}:G${row}`,
       values: [
         [
@@ -182,8 +191,24 @@ export function buildSheetUpdates(
           task.id ?? '',
         ],
       ],
-    };
-  });
+    });
+  }
+
+  // 매핑 가능한 태스크가 하나도 없고 대상 태스크가 있었던 경우 명확한 에러 메시지
+  if (tasks.length > 0 && updates.length === 0) {
+    throw new Error(
+      `시트에서 고유 업무 ID를 확인할 수 없습니다: ${unmatchedIds.slice(0, 3).join(', ')}`,
+    );
+  }
+
+  if (unmatchedIds.length > 0) {
+    console.warn(
+      `[SHEET EXPORT WARNING]: 시트 G열과 일치하지 않는 ${unmatchedIds.length}개 업무 스킵:`,
+      unmatchedIds.slice(0, 5),
+    );
+  }
+
+  return updates;
 }
 
 export async function writeSheetTasks(
@@ -203,6 +228,7 @@ export async function writeSheetTasks(
     throw new Error(`Google Sheets 업무 ID 확인 실패 (${idResponse.status})`);
   const ids = (await idResponse.json()) as { values?: unknown[][] };
   const data = buildSheetUpdates(tasks, ids.values ?? [], name);
+  if (!data.length) return 0;
   const response = await fetch(
     `https://sheets.googleapis.com/v4/spreadsheets/${encodeURIComponent(id)}/values:batchUpdate`,
     {
@@ -216,5 +242,5 @@ export async function writeSheetTasks(
     throw new Error(
       `Google Sheets 쓰기 실패 (${response.status}). 권한과 시트를 확인해 주세요.`,
     );
-  return tasks.length;
+  return data.length;
 }

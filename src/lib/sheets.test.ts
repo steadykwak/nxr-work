@@ -68,6 +68,23 @@ describe('NXR Work → Google Sheets 쓰기', () => {
       { range: "'곽운도'!E2:G2", values: [[false, '대기', '']] },
     ]);
   });
+
+  it('일부 태스크가 시트와 일치하지 않더라도 일치하는 태스크는 안전하게 업데이트한다', () => {
+    const task2: ExportTask = {
+      id: 'task-uuid-2',
+      source_id: 'deleted-task',
+      source_completed: false,
+      source_status: '시작 전',
+      override_completed: null,
+      override_status: null,
+    };
+    const updates = buildSheetUpdates([task, task2], [['task-1']], '곽운도');
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toEqual({
+      range: "'곽운도'!E2:G2",
+      values: [[true, '완료', 'task-uuid-1']],
+    });
+  });
 });
 
 describe('Google Sheets → NXR Work 8컬럼(A~H) 읽기 파싱', () => {

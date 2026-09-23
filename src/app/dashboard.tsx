@@ -1,5 +1,5 @@
 'use client';
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { createBrowserClient } from '@supabase/ssr';
 import {
   CalendarDays,
@@ -15,6 +15,10 @@ import {
   RefreshCw,
   Search,
   ArrowUpRight,
+  Plus,
+  Pencil,
+  Trash2,
+  X,
 } from 'lucide-react';
 import type { CalendarEvent } from '@/lib/google';
 import {
@@ -28,6 +32,7 @@ import {
   weekRange,
   type MeetingView,
 } from '@/lib/today';
+
 export type Task = {
   id: string;
   source_title: string;
@@ -43,6 +48,7 @@ export type Task = {
   override_status: string | null;
   source: string;
 };
+
 type Props = {
   configured: boolean;
   googleReady: boolean;
@@ -60,6 +66,16 @@ type Props = {
   dataError?: string;
   calendarError?: string;
 };
+
+type TaskFormData = {
+  title: string;
+  owner: string;
+  createdDate: string;
+  dueDate: string;
+  status: string;
+  note: string;
+};
+
 const formatDate = (value: string) =>
   new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
@@ -67,6 +83,7 @@ const formatDate = (value: string) =>
     day: 'numeric',
     weekday: 'short',
   }).format(new Date(`${value.slice(0, 10)}T00:00:00+09:00`));
+
 const eventTime = (value: string) =>
   new Intl.DateTimeFormat('ko-KR', {
     timeZone: 'Asia/Seoul',
@@ -74,6 +91,7 @@ const eventTime = (value: string) =>
     minute: '2-digit',
     hour12: false,
   }).format(new Date(value));
+
 function DueLegend() {
   return (
     <div className="due-legend">
@@ -86,6 +104,21 @@ function DueLegend() {
     </div>
   );
 }
+
+function statusClass(status: string) {
+  switch (status) {
+    case '진행 중':
+      return 'in-progress';
+    case '대기':
+      return 'waiting';
+    case '완료':
+      return 'done';
+    case '시작 전':
+    default:
+      return 'todo';
+  }
+}
+
 export default function Dashboard({
   configured,
   googleReady,
@@ -112,6 +145,12 @@ export default function Dashboard({
   const [query, setQuery] = useState('');
   const [notice, setNotice] = useState('');
   const [busy, startTransition] = useTransition();
+
+  // 모달 상태
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [modalTask, setModalTask] = useState<Task | null>(null);
+  const [modalBusy, setModalBusy] = useState(false);
+
   const completed = effectiveCompleted;
   const visible = tasks.filter(
     (task) =>
@@ -120,8 +159,8 @@ export default function Dashboard({
         (filter === 'overdue'
           ? Boolean(
               task.source_due_date &&
-              task.source_due_date < today &&
-              !completed(task),
+                task.source_due_date < today &&
+                !completed(task),
             )
           : Boolean(task.source_due_date && task.source_due_date > today))),
   );
@@ -153,6 +192,7 @@ export default function Dashboard({
       event,
     })),
   ].sort((a, b) => a.date.localeCompare(b.date));
+
   async function signOut() {
     const supabase = createBrowserClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -161,6 +201,7 @@ export default function Dashboard({
     await supabase.auth.signOut();
     location.assign('/login');
   }
+
   async function sync() {
     setNotice('');
     startTransition(async () => {
@@ -177,78 +218,272 @@ export default function Dashboard({
       }
     });
   }
+
+  async function updateStatus(task: Task, nextStatus: string) {
+    const isCompleted = nextStatus === '완료';
+    const prevTask = { ...task };
+
+    setTasks((current) =>
+      current.map((item) => {
+        if (item.id !== task.id) return item;
+        if (item.source === 'manual') {
+          return {
+            ...item,
+            source_status: nextStatus,
+            source_completed: isCompleted,
+            override_status: nextStatus,
+            override_completed: isCompleted,
+          };
+        }
+        return {
+          ...item,
+          override_status: nextStatus,
+          override_completed: isCompleted,
+        };
+      }),
+    );
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: nextStatus,
+          completed: isCompleted,
+        }),
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || '상태 변경 실패');
+      }
+    } catch (error) {
+      setTasks((current) =>
+        current.map((item) => (item.id === task.id ? prevTask : item)),
+      );
+      setNotice(
+        error instanceof Error ? error.message : '상태 변경에 실패했습니다.',
+      );
+    }
+  }
+
   async function toggle(task: Task) {
     const next = !completed(task);
+    const nextStatus = next ? '완료' : '진행 중';
+    const prevTask = { ...task };
+
     setTasks((current) =>
-      current.map((item) =>
-        item.id === task.id ? { ...item, override_completed: next } : item,
-      ),
+      current.map((item) => {
+        if (item.id !== task.id) return item;
+        if (item.source === 'manual') {
+          return {
+            ...item,
+            source_completed: next,
+            source_status: nextStatus,
+            override_completed: next,
+            override_status: nextStatus,
+          };
+        }
+        return {
+          ...item,
+          override_completed: next,
+          override_status: nextStatus,
+        };
+      }),
     );
-    const response = await fetch(`/api/tasks/${task.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ completed: next }),
-    });
-    if (!response.ok) {
+
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ completed: next, status: nextStatus }),
+      });
+      if (!response.ok) {
+        setTasks((current) =>
+          current.map((item) => (item.id === task.id ? prevTask : item)),
+        );
+        setNotice('완료 상태 저장에 실패했습니다.');
+      }
+    } catch {
       setTasks((current) =>
-        current.map((item) => (item.id === task.id ? task : item)),
+        current.map((item) => (item.id === task.id ? prevTask : item)),
       );
       setNotice('완료 상태 저장에 실패했습니다.');
     }
   }
-  const taskRow = (task: Task) => (
-    <div className={`task-row ${completed(task) ? 'done' : ''}`} key={task.id}>
-      <button
-        className="check"
-        aria-label={`${task.source_title} 완료 변경`}
-        aria-pressed={completed(task)}
-        onClick={() => toggle(task)}
+
+  function openCreateModal() {
+    setModalTask(null);
+    setIsModalOpen(true);
+  }
+
+  function openEditModal(task: Task) {
+    setModalTask(task);
+    setIsModalOpen(true);
+  }
+
+  async function deleteTask(task: Task) {
+    if (!window.confirm(`'${task.source_title}' 업무를 삭제하시겠습니까?`)) {
+      return;
+    }
+    const prevTasks = [...tasks];
+    setTasks((current) => current.filter((item) => item.id !== task.id));
+    try {
+      const response = await fetch(`/api/tasks/${task.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        throw new Error(result.error || '삭제 실패');
+      }
+      setNotice('업무가 삭제되었습니다.');
+    } catch (error) {
+      setTasks(prevTasks);
+      setNotice(
+        error instanceof Error ? error.message : '업무 삭제에 실패했습니다.',
+      );
+    }
+  }
+
+  async function saveTask(formData: TaskFormData) {
+    setModalBusy(true);
+    try {
+      if (modalTask) {
+        // Edit (manual task)
+        const response = await fetch(`/api/tasks/${modalTask.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '수정 실패');
+        setTasks((current) =>
+          current.map((item) =>
+            item.id === modalTask.id ? { ...item, ...result.task } : item,
+          ),
+        );
+        setNotice('업무가 수정되었습니다.');
+      } else {
+        // Create
+        const response = await fetch('/api/tasks', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(formData),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || '생성 실패');
+        setTasks((current) => [result.task, ...current]);
+        setNotice('새 업무가 추가되었습니다.');
+      }
+      setIsModalOpen(false);
+      setModalTask(null);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : '저장 실패');
+    } finally {
+      setModalBusy(false);
+    }
+  }
+
+  const taskRow = (task: Task) => {
+    const currentStatus =
+      task.override_status ?? task.source_status ?? '시작 전';
+
+    return (
+      <div
+        className={`task-row ${completed(task) ? 'done' : ''}`}
+        key={task.id}
       >
-        {completed(task) && <Check size={15} />}
-      </button>
-      <div className="task-main">
-        <strong>{task.source_title}</strong>
-        <span>
-          {task.source_owner || '담당자 없음'} <i />{' '}
-          {task.override_status ?? task.source_status ?? '상태 없음'}
-        </span>
-      </div>
-      <span className="due">
-        {!completed(task) &&
-          dueUrgency(task.source_due_date, today) === 'overdue' && (
-            <span
-              className="due-dot overdue"
-              role="img"
-              aria-label="기한 지남"
-              title="기한 지남"
-            />
-          )}
-        {!completed(task) &&
-          dueUrgency(task.source_due_date, today) === 'soon' && (
-            <span
-              className="due-dot soon"
-              role="img"
-              aria-label="3일 이내 기한"
-              title="3일 이내 기한"
-            />
-          )}
-        {task.source_due_date
-          ? formatDate(task.source_due_date)
-          : task.source_due_raw || '기한 없음'}
-      </span>
-      {task.source_url && (
-        <a
-          className="row-link"
-          href={task.source_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="원본 시트 열기"
+        <button
+          className="check"
+          aria-label={`${task.source_title} 완료 변경`}
+          aria-pressed={completed(task)}
+          onClick={() => toggle(task)}
         >
-          <ExternalLink size={16} />
-        </a>
-      )}
-    </div>
-  );
+          {completed(task) && <Check size={15} />}
+        </button>
+        <div className="task-main">
+          <strong>{task.source_title}</strong>
+          <span>
+            {task.source_owner || '담당자 없음'}
+            {task.source === 'manual' && (
+              <span className="source-tag manual">수동</span>
+            )}
+            {task.source_note && (
+              <span className="note-preview" title={task.source_note}>
+                · {task.source_note}
+              </span>
+            )}
+          </span>
+        </div>
+        <div className="status-dropdown-wrap">
+          <select
+            className={`status-select ${statusClass(currentStatus)}`}
+            value={currentStatus}
+            onChange={(e) => updateStatus(task, e.target.value)}
+            aria-label={`${task.source_title} 상태 변경`}
+          >
+            <option value="시작 전">시작 전</option>
+            <option value="진행 중">진행 중</option>
+            <option value="대기">대기</option>
+            <option value="완료">완료</option>
+          </select>
+        </div>
+        <span className="due">
+          {!completed(task) &&
+            dueUrgency(task.source_due_date, today) === 'overdue' && (
+              <span
+                className="due-dot overdue"
+                role="img"
+                aria-label="기한 지남"
+                title="기한 지남"
+              />
+            )}
+          {!completed(task) &&
+            dueUrgency(task.source_due_date, today) === 'soon' && (
+              <span
+                className="due-dot soon"
+                role="img"
+                aria-label="3일 이내 기한"
+                title="3일 이내 기한"
+              />
+            )}
+          {task.source_due_date
+            ? formatDate(task.source_due_date)
+            : task.source_due_raw || '기한 없음'}
+        </span>
+        {task.source === 'manual' && (
+          <div className="task-actions">
+            <button
+              className="action-btn edit"
+              onClick={() => openEditModal(task)}
+              title="업무 수정"
+              aria-label="업무 수정"
+            >
+              <Pencil size={14} />
+            </button>
+            <button
+              className="action-btn delete"
+              onClick={() => deleteTask(task)}
+              title="업무 삭제"
+              aria-label="업무 삭제"
+            >
+              <Trash2 size={14} />
+            </button>
+          </div>
+        )}
+        {task.source_url && (
+          <a
+            className="row-link"
+            href={task.source_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="원본 시트 열기"
+          >
+            <ExternalLink size={16} />
+          </a>
+        )}
+      </div>
+    );
+  };
   const eventRow = (event: CalendarEvent) => (
     <div className="event-row" key={event.id}>
       <div className="event-icon">
@@ -396,16 +631,26 @@ export default function Dashboard({
                 {formatDate(today)} · 업무와 미팅을 한눈에 확인하세요.
               </p>
             </div>
-            {email && connected && (
-              <button
-                className="primary"
-                onClick={sync}
-                disabled={busy || syncInProgress}
-              >
-                <RefreshCw size={16} className={busy ? 'spinning' : ''} />{' '}
-                {busy || syncInProgress ? '동기화 중...' : '시트 동기화'}
-              </button>
-            )}
+            <div className="heading-actions">
+              {email && (
+                <button
+                  className="secondary add-task-btn"
+                  onClick={openCreateModal}
+                >
+                  <Plus size={16} /> 새 업무 추가
+                </button>
+              )}
+              {email && connected && (
+                <button
+                  className="primary"
+                  onClick={sync}
+                  disabled={busy || syncInProgress}
+                >
+                  <RefreshCw size={16} className={busy ? 'spinning' : ''} />{' '}
+                  {busy || syncInProgress ? '동기화 중...' : '시트 동기화'}
+                </button>
+              )}
+            </div>
           </div>
           {(initialImportedAt || lastExportAt) && (
             <p className="sync-status" role="status">
@@ -694,6 +939,180 @@ export default function Dashboard({
           )}
         </div>
       </main>
+
+      <TaskModal
+        isOpen={isModalOpen}
+        task={modalTask}
+        onClose={() => {
+          setIsModalOpen(false);
+          setModalTask(null);
+        }}
+        onSubmit={saveTask}
+        busy={modalBusy}
+      />
+    </div>
+  );
+}
+
+function TaskModal({
+  isOpen,
+  task,
+  onClose,
+  onSubmit,
+  busy,
+}: {
+  isOpen: boolean;
+  task: Task | null;
+  onClose: () => void;
+  onSubmit: (data: TaskFormData) => Promise<void>;
+  busy: boolean;
+}) {
+  const [title, setTitle] = useState('');
+  const [owner, setOwner] = useState('');
+  const [createdDate, setCreatedDate] = useState('');
+  const [dueDate, setDueDate] = useState('');
+  const [status, setStatus] = useState('시작 전');
+  const [note, setNote] = useState('');
+
+  useEffect(() => {
+    if (task) {
+      setTitle(task.source_title || '');
+      setOwner(task.source_owner || '');
+      setCreatedDate(task.source_created_date || '');
+      setDueDate(task.source_due_date || '');
+      setStatus(task.override_status ?? task.source_status ?? '시작 전');
+      setNote(task.source_note || '');
+    } else {
+      setTitle('');
+      setOwner('');
+      setCreatedDate('');
+      setDueDate('');
+      setStatus('시작 전');
+      setNote('');
+    }
+  }, [task, isOpen]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) return;
+    await onSubmit({
+      title: title.trim(),
+      owner: owner.trim(),
+      createdDate,
+      dueDate,
+      status,
+      note: note.trim(),
+    });
+  };
+
+  return (
+    <div
+      className="modal-backdrop"
+      onClick={onClose}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>{task ? '업무 수정' : '새 업무 추가'}</h3>
+          <button
+            type="button"
+            className="modal-close"
+            onClick={onClose}
+            aria-label="닫기"
+          >
+            <X size={18} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="modal-form">
+          <div className="form-group">
+            <label htmlFor="task-title">업무명 *</label>
+            <input
+              id="task-title"
+              type="text"
+              required
+              placeholder="업무 제목을 입력하세요"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="task-owner">담당자</label>
+              <input
+                id="task-owner"
+                type="text"
+                placeholder="담당자 이름"
+                value={owner}
+                onChange={(e) => setOwner(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="task-status">상태</label>
+              <select
+                id="task-status"
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+              >
+                <option value="시작 전">시작 전</option>
+                <option value="진행 중">진행 중</option>
+                <option value="대기">대기</option>
+                <option value="완료">완료</option>
+              </select>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label htmlFor="task-created">시작일</label>
+              <input
+                id="task-created"
+                type="date"
+                value={createdDate}
+                onChange={(e) => setCreatedDate(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label htmlFor="task-due">기한</label>
+              <input
+                id="task-due"
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label htmlFor="task-note">비고</label>
+            <textarea
+              id="task-note"
+              rows={3}
+              placeholder="참고할 메모나 비고 사항을 입력하세요"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+            />
+          </div>
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="secondary"
+              onClick={onClose}
+              disabled={busy}
+            >
+              취소
+            </button>
+            <button
+              type="submit"
+              className="primary"
+              disabled={busy || !title.trim()}
+            >
+              {busy ? '저장 중...' : task ? '수정 완료' : '업무 추가'}
+            </button>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }

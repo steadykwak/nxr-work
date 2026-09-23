@@ -6,18 +6,24 @@ function syncNxrWorkHourly() {
   if (!appUrl || !secret || !/^https:\/\//.test(appUrl)) {
     throw new Error('HTTPS NXR_WORK_URL and CRON_SECRET script properties are required.');
   }
-  const response = UrlFetchApp.fetch(
-    appUrl.replace(/\/$/, '') + '/api/cron/sheet-export',
-    {
-      method: 'get',
-      headers: { Authorization: 'Bearer ' + secret },
-      muteHttpExceptions: true,
-      followRedirects: false,
-    },
-  );
-  if (response.getResponseCode() !== 200) {
-    throw new Error('NXR Work sync failed (HTTP ' + response.getResponseCode() + ').');
+
+  const endpoint = appUrl.replace(/\/$/, '') + '/api/cron/sheet-export';
+  const response = UrlFetchApp.fetch(endpoint, {
+    method: 'get',
+    headers: { Authorization: 'Bearer ' + secret },
+    muteHttpExceptions: true,
+    followRedirects: false,
+  });
+
+  const statusCode = response.getResponseCode();
+  const responseText = response.getContentText ? response.getContentText() : '';
+
+  if (statusCode !== 200) {
+    console.error('NXR Work sync failed (HTTP ' + statusCode + '): ' + responseText);
+    throw new Error('NXR Work sync failed (HTTP ' + statusCode + '): ' + responseText);
   }
+
+  console.log('NXR Work sync succeeded (HTTP 200): ' + responseText);
 }
 
 /** Run once in the Apps Script editor. Avoid creating duplicate hourly triggers. */
@@ -27,5 +33,8 @@ function installNxrWorkHourlyTrigger() {
   );
   if (!exists) {
     ScriptApp.newTrigger('syncNxrWorkHourly').timeBased().everyHours(1).create();
+    console.log('Installed 1-hour trigger for syncNxrWorkHourly.');
+  } else {
+    console.log('Trigger for syncNxrWorkHourly already exists.');
   }
 }
